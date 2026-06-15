@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dialect Identification Training Configuration
+# Model: WavLM-Large → Attention Pooling → 63-class Province Classifier
+# ─────────────────────────────────────────────────────────────────────────────
+
+model:
+  encoder: microsoft/wavlm-large
+  num_province_classes: 63
+  num_region_classes: 3
+  num_ethnic_classes: 3          # viet, ede, bahnar
+  pooling: attention             # attention | mean | max
+  hidden_size: 1024
+  dropout: 0.1
+  use_adapter: true
+  adapter_size: 64
+  freeze_encoder_layers: 12      # Freeze bottom 12 layers
+  use_arcface: true
+  arcface_margin: 0.3
+  arcface_scale: 64.0
+
+training:
+  # Colab T4 optimized
+  batch_size: auto               # auto-computed from available VRAM
+  gradient_accumulation_steps: 8
+  max_epochs: 50
+  early_stopping_patience: 7
+  learning_rate: 1.0e-4
+  encoder_lr: 1.0e-5             # Lower LR for pre-trained encoder
+  optimizer: adamw
+  weight_decay: 0.01
+  scheduler: cosine_with_restarts
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  mixed_precision: fp16          # Use bf16 on A100/H100
+  ema: true
+  ema_decay: 0.9999
+
+loss:
+  province:
+    type: focal
+    gamma: 2.0
+    weight: 1.0
+  region:
+    type: cross_entropy
+    weight: 0.3
+  ethnic:
+    type: cross_entropy
+    weight: 0.2
+  arcface:
+    weight: 0.5
+
+data:
+  sample_rate: 16000
+  max_duration_s: 20.0
+  min_duration_s: 0.5
+  augment_train: true
+  augment_prob: 0.5
+  spec_augment: true
+  freq_mask_param: 27
+  time_mask_param: 100
+  num_freq_masks: 2
+  num_time_masks: 2
+
+evaluation:
+  metrics:
+    - province_accuracy
+    - region_accuracy
+    - top3_accuracy
+    - f1_macro
+    - f1_weighted
+    - confusion_matrix
+  target_province_accuracy: 0.70
+  target_region_accuracy: 0.95
+
+checkpointing:
+  save_every_n_steps: 500
+  keep_top_k: 3
+  monitor_metric: province_accuracy
+  monitor_mode: max
+  gdrive_sync: true
+  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/dialect
+
+logging:
+  mlflow_experiment: dialect_identification
+  log_every_n_steps: 50
+  log_confusion_matrix: true

@@ -1,0 +1,56 @@
+FROM python:3.11-slim-bookworm
+
+# ── System dependencies ────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsndfile1 \
+    libsox-dev \
+    sox \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Non-root user ──────────────────────────────────────────────────────────────
+RUN groupadd -r vietspeech && useradd -r -g vietspeech -d /app -s /sbin/nologin vietspeech
+
+# ── Working directory ──────────────────────────────────────────────────────────
+WORKDIR /app
+
+# ── Python dependencies ────────────────────────────────────────────────────────
+COPY requirements-inference.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-inference.txt
+
+# ── Application code ───────────────────────────────────────────────────────────
+COPY --chown=vietspeech:vietspeech . .
+
+# ── Create storage directories ─────────────────────────────────────────────────
+RUN mkdir -p storage/audio storage/weights storage/logs storage/datasets storage/checkpoints storage/exports && \
+    chown -R vietspeech:vietspeech storage/
+
+# ── Switch to non-root ─────────────────────────────────────────────────────────
+USER vietspeech
+
+# ── Health check ───────────────────────────────────────────────────────────────
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# ── Environment ────────────────────────────────────────────────────────────────
+ENV APP_HOST=0.0.0.0 \
+    APP_PORT=8000 \
+    APP_ENV=production \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# ── Expose port ────────────────────────────────────────────────────────────────
+EXPOSE 8000
+
+# ── Entrypoint ─────────────────────────────────────────────────────────────────
+CMD ["uvicorn", "backend.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "1", \
+     "--loop", "uvloop", \
+     "--http", "httptools", \
+     "--log-level", "info"]

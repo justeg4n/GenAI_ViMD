@@ -1,0 +1,79 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Translation Training Configuration
+# mBART-50 + Adapter Layers
+# Language Pairs: Vietnamese ↔ Ede, Vietnamese ↔ Bahnar
+# ─────────────────────────────────────────────────────────────────────────────
+
+model:
+  base: facebook/mbart-large-50
+  src_lang_vi: vi_VN
+  src_lang_ede: ede_XX          # Custom token (added to tokenizer)
+  src_lang_bah: bah_XX          # Custom token
+  max_length: 512
+  use_adapter: true
+  adapter_size: 256
+  adapter_dropout: 0.1
+  num_adapter_layers: 6
+
+language_pairs:
+  - src: vi_VN
+    tgt: ede_XX
+    name: vi_to_ede
+  - src: ede_XX
+    tgt: vi_VN
+    name: ede_to_vi
+  - src: vi_VN
+    tgt: bah_XX
+    name: vi_to_bah
+  - src: bah_XX
+    tgt: vi_VN
+    name: bah_to_vi
+
+training:
+  batch_size: auto
+  gradient_accumulation_steps: 8
+  max_epochs: 50
+  early_stopping_patience: 8
+  learning_rate: 3.0e-4
+  optimizer: adamw
+  weight_decay: 0.01
+  scheduler: cosine
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  mixed_precision: fp16
+  label_smoothing: 0.1
+
+low_resource:
+  backtranslation: true
+  backtranslation_weight: 0.5
+  synthetic_generation: true
+  data_augmentation: true
+  curriculum_learning: true     # Start with high-confidence pairs
+  cross_lingual_transfer: true  # Transfer from Vi↔En
+  min_pairs_threshold: 100      # Minimum pairs before training
+
+data:
+  max_src_len: 256
+  max_tgt_len: 256
+  augment_src: true
+  augment_tgt: false
+  noise_prob: 0.1
+
+evaluation:
+  metrics:
+    - bleu
+    - chrf
+    - ter
+  target_bleu: 25.0            # BLEU target for low-resource pairs
+
+checkpointing:
+  save_every_n_steps: 500
+  keep_top_k: 3
+  monitor_metric: bleu
+  monitor_mode: max
+  gdrive_sync: true
+  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/translation
+
+logging:
+  mlflow_experiment: translation_mbart
+  log_every_n_steps: 50

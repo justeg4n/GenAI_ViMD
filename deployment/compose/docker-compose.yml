@@ -1,0 +1,170 @@
+name: vietspeech-ai
+
+services:
+  # ── Backend API ─────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile.backend
+    image: vietspeech-ai-backend:latest
+    container_name: vietspeech_backend
+    env_file: ../../.env
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=postgresql+asyncpg://vietspeech_user:${POSTGRES_PASSWORD}@db:5432/vietspeech
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../storage:/app/storage
+      - ../../backend:/app/backend     # Hot reload in dev
+      - ../../models:/app/models
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── Celery Worker ───────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile.backend
+    image: vietspeech-ai-backend:latest
+    container_name: vietspeech_worker
+    command: >
+      celery -A backend.workers.celery_app worker
+      --loglevel=info -Q default,audio,inference
+      --concurrency=2
+    env_file: ../../.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vietspeech_user:${POSTGRES_PASSWORD}@db:5432/vietspeech
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    volumes:
+      - ../../storage:/app/storage
+    depends_on:
+      - redis
+      - db
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: vietspeech_db
+    environment:
+      POSTGRES_DB: vietspeech
+      POSTGRES_USER: vietspeech_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-strong-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vietspeech_user -d vietspeech"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: vietspeech_redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+
+  # ── MLflow Tracking Server ──────────────────────────────────────────────────
+  mlflow:
+    image: python:3.11-slim
+    container_name: vietspeech_mlflow
+    command: >
+      bash -c "pip install mlflow psycopg2-binary -q &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://vietspeech_user:${POSTGRES_PASSWORD}@db:5432/vietspeech
+      --default-artifact-root /mlflow-artifacts"
+    volumes:
+      - mlflow_artifacts:/mlflow-artifacts
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vietspeech_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+    volumes:
+      - ../../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vietspeech_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_DOMAIN: localhost
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../../monitoring/grafana:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - vietspeech_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  mlflow_artifacts:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  vietspeech_net:
+    driver: bridge

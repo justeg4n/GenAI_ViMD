@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ASR Training Configuration
+# Primary:  Whisper Large-v3 + LoRA/QLoRA
+# Secondary: PhoWhisper
+# Fallback:  Wav2Vec2
+# ─────────────────────────────────────────────────────────────────────────────
+
+model:
+  primary: openai/whisper-large-v3
+  secondary: vinai/PhoWhisper-large
+  fallback: facebook/wav2vec2-large-960h-lv60-self
+  language: vi
+  task: transcribe
+  use_flash_attention: true
+  gradient_checkpointing: true
+
+peft:
+  method: qlora               # qlora | lora | full
+  lora_r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  lora_target_modules:
+    - q_proj
+    - v_proj
+    - k_proj
+    - out_proj
+    - fc1
+    - fc2
+  bits: 4                     # 4-bit quantization for QLoRA
+
+training:
+  batch_size: auto
+  gradient_accumulation_steps: 4
+  max_epochs: adaptive
+  early_stopping_patience: 5
+  learning_rate: 1.0e-4
+  optimizer: adamw_bnb_8bit   # Use bitsandbytes AdamW
+  weight_decay: 0.01
+  scheduler: cosine
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  mixed_precision: fp16
+  ema: false                  # EMA disabled for QLoRA
+
+data:
+  sample_rate: 16000
+  max_duration_s: 30.0
+  min_duration_s: 0.5
+  augment_train: true
+  augment_prob: 0.4
+  spec_augment: true
+  num_workers: 4
+
+generation:
+  max_new_tokens: 444
+  num_beams: 5
+  temperature: 0.0
+
+evaluation:
+  metrics:
+    - wer
+    - cer
+    - province_wer
+    - gender_wer
+  target_wer: 0.08
+  target_cer: 0.04
+  normalize_text: true
+  language: vi
+
+checkpointing:
+  save_every_n_steps: 200
+  keep_top_k: 3
+  monitor_metric: wer
+  monitor_mode: min
+  gdrive_sync: true
+  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/asr
+
+export:
+  onnx: true
+  torchscript: true
+  gguf: true
+  quantize_onnx: true
+  onnx_opset: 17
+
+logging:
+  mlflow_experiment: asr_whisper
+  log_every_n_steps: 50

@@ -1,0 +1,47 @@
+# ── Dockerfile.worker ─────────────────────────────────────────────────────────
+# Celery worker for async AI inference tasks.
+# Based on the backend image with heavy ML libraries.
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 python3.10-dev python3-pip \
+    ffmpeg libsndfile1 libgomp1 \
+    build-essential curl git \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ── Python deps ────────────────────────────────────────────────────────────────
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install -r requirements.txt
+
+# ── App code ───────────────────────────────────────────────────────────────────
+COPY . .
+
+# ── Storage directories ────────────────────────────────────────────────────────
+RUN mkdir -p storage/audio storage/checkpoints storage/weights \
+             storage/logs storage/exports storage/datasets
+
+# ── Non-root user ──────────────────────────────────────────────────────────────
+RUN groupadd -r worker && useradd -r -g worker worker && \
+    chown -R worker:worker /app
+USER worker
+
+# ── Health check ───────────────────────────────────────────────────────────────
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD celery -A backend.workers.celery_app inspect ping -d celery@$HOSTNAME || exit 1
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+CMD ["celery", "-A", "backend.workers.celery_app", "worker", \
+     "--loglevel=info", "--concurrency=2", \
+     "-Q", "transcription,synthesis,translation,default"]

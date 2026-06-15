@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TTS Training Configuration
+# Primary: XTTS-v2
+# Alternative: CosyVoice2
+# ─────────────────────────────────────────────────────────────────────────────
+
+model:
+  primary: tts_models/multilingual/multi-dataset/xtts_v2
+  alternative: FunAudioLLM/CosyVoice2-0.5B
+  language: vi
+  speaker_embedding_dim: 512
+  use_gst: true               # Global Style Tokens for prosody
+  gst_num_heads: 4
+  gst_num_style_tokens: 10
+  sample_rate: 24000          # XTTS-v2 native: 24kHz
+
+fine_tuning:
+  method: lora
+  lora_r: 16
+  lora_alpha: 32
+  train_encoder: false
+  train_gpt: true             # Fine-tune the GPT backbone
+  train_decoder: true
+  freeze_speaker_encoder: true
+
+training:
+  batch_size: auto
+  gradient_accumulation_steps: 4
+  max_epochs: 100
+  early_stopping_patience: 10
+  learning_rate: 5.0e-5
+  optimizer: adamw
+  weight_decay: 0.01
+  scheduler: cosine
+  warmup_ratio: 0.1
+  max_grad_norm: 0.5
+  mixed_precision: fp16
+
+voice_cloning:
+  min_ref_duration_s: 5
+  max_ref_duration_s: 30
+  target_duration_s: 15       # Preferred reference length
+  preserve_dialect: true
+  preserve_prosody: true
+  anti_overfit_weight: 0.1
+  speaker_loss_weight: 1.0
+
+tts_controls:
+  speed_range: [0.5, 2.0]
+  emotion_tokens: [neutral, happy, sad, angry, surprised, fearful]
+  dialect_conditioning: true
+  intonation_control: true
+
+evaluation:
+  metrics:
+    - mos                     # Mean Opinion Score
+    - speaker_similarity
+    - pitch_error
+    - mcd                     # Mel Cepstral Distortion
+    - rtf                     # Real-Time Factor
+    - latency_ms
+  target_mos: 4.3
+  target_speaker_similarity: 0.90
+  target_latency_ms: 300
+
+checkpointing:
+  save_every_n_steps: 1000
+  keep_top_k: 3
+  monitor_metric: speaker_similarity
+  monitor_mode: max
+  gdrive_sync: true
+  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/tts
+
+logging:
+  mlflow_experiment: tts_xtts
+  log_every_n_steps: 100

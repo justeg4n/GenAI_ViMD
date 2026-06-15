@@ -1,0 +1,110 @@
+{
+  "title": "VietSpeech AI — Platform Overview",
+  "uid": "vietspeech-overview",
+  "version": 1,
+  "schemaVersion": 38,
+  "tags": ["vietspeech", "asr", "tts", "dialect"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Request Rate",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job='vietspeech-backend'}[5m]))",
+          "legendFormat": "req/s"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "ASR P95 Latency (ms)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(asr_latency_ms_bucket[5m]))",
+          "legendFormat": "P95"
+        }
+      ],
+      "thresholds": {
+        "steps": [
+          {"color": "green", "value": null},
+          {"color": "yellow", "value": 250},
+          {"color": "red", "value": 300}
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "title": "Dialect Accuracy",
+      "type": "gauge",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "vietspeech_dialect_accuracy_province",
+          "legendFormat": "Province Acc"
+        }
+      ],
+      "options": {
+        "minValue": 0,
+        "maxValue": 100
+      }
+    },
+    {
+      "id": 4,
+      "title": "GPU Memory Usage",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_MEM_COPY_UTIL{job='vietspeech-backend'}",
+          "legendFormat": "GPU {{gpu}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Error Rate by Endpoint",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [
+        {
+          "expr": "sum by (path)(rate(http_requests_total{status=~'5..'}[5m]))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Active Celery Tasks",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 12},
+      "targets": [
+        {
+          "expr": "celery_tasks_active",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "celery_tasks_reserved",
+          "legendFormat": "Queued"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Translation Requests by Language Pair",
+      "type": "piechart",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 12},
+      "targets": [
+        {
+          "expr": "sum by (source_lang, target_lang)(increase(translation_requests_total[1h]))",
+          "legendFormat": "{{source_lang}}→{{target_lang}}"
+        }
+      ]
+    }
+  ]
+}
