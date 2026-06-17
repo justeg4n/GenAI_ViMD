@@ -1,4 +1,4 @@
-# 🇻🇳 VietSpeech AI Platform v2.0
+# 🇻🇳 DISA Travel AI Platform
 
 **Production-grade Vietnamese Multi-Dialect Speech AI**
 
