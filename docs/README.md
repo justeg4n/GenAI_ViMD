@@ -8,7 +8,7 @@
 
 ## Overview
 
-VietSpeech AI is a comprehensive speech intelligence platform covering:
+GenAI ViMD is a comprehensive speech intelligence platform covering:
 
 - **63-province dialect detection** across all Vietnamese provinces
 - **ASR** using Whisper Large-v3 + LoRA fine-tuning on ViMD (102.56h, 18,949 utterances)
