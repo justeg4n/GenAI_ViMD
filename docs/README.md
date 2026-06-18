@@ -1,4 +1,4 @@
-# 🇻🇳 DISA Travel AI Platform
+# GenAI Vietnamese Multi-Dialect Platform
 
 **Production-grade Vietnamese Multi-Dialect Speech AI**
 
