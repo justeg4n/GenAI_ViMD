@@ -2,9 +2,15 @@
 _env.py — Environment detection + path configuration
 Dùng chung cho tất cả notebooks (Kaggle / Colab / Local).
 
-Usage:
+Usage (Colab):
     import sys, os
-    sys.path.insert(0, '/kaggle/working/project/training/notebooks')  # Kaggle
+    # Nếu đã clone repo về /content/project:
+    sys.path.insert(0, '/content/project/training/notebooks')
+    from _env import *
+
+Usage (Kaggle):
+    import sys, os
+    sys.path.insert(0, '/kaggle/working/project/training/notebooks')
     from _env import *
 """
 import os, sys
@@ -12,7 +18,14 @@ from pathlib import Path
 
 # ─── Detect environment ───────────────────────────────────────────────────────
 IS_KAGGLE = os.path.exists('/kaggle/working')
-IS_COLAB  = 'google.colab' in sys.modules or os.path.exists('/content/drive')
+
+# Colab: kiểm tra cả 2 cách (import trực tiếp và kiểm tra /content)
+try:
+    import google.colab  # noqa: F401
+    IS_COLAB = True
+except ImportError:
+    IS_COLAB = os.path.exists('/content') and not IS_KAGGLE
+
 IS_LOCAL  = not IS_KAGGLE and not IS_COLAB
 ENV_NAME  = 'Kaggle' if IS_KAGGLE else ('Colab' if IS_COLAB else 'Local')
 
@@ -34,19 +47,33 @@ if IS_KAGGLE:
     LOGS_DIR       = '/kaggle/working/storage/logs'
     EXPORTS_DIR    = '/kaggle/working/storage/exports'
 
+    # Audio: dùng /kaggle/working/ (đủ nhanh, persist sau Save Version)
+    _AUDIO_LOCAL   = None
+
 # ─── Colab ────────────────────────────────────────────────────────────────────
 elif IS_COLAB:
     DRIVE_ROOT     = '/content/drive/MyDrive/GenAI_ViMD'
     PROJECT_ROOT   = DRIVE_ROOT
     VIMD_PATH      = os.path.join(DRIVE_ROOT, 'ViMD', 'data')
+    VIMD_SLUG      = 'genai-vimd'
     PREV_CKPT_DIR  = os.path.join(DRIVE_ROOT, 'storage', 'checkpoints')
-    CODE_DIR       = DRIVE_ROOT
+
+    # Code dir: ưu tiên clone về /content/project, fallback về Drive
+    if os.path.exists('/content/project/training/notebooks'):
+        CODE_DIR = '/content/project'
+    else:
+        CODE_DIR = DRIVE_ROOT
+
     PROCESSED_PATH = os.path.join(DRIVE_ROOT, 'storage', 'processed')
     DATASET_EXPORT = os.path.join(DRIVE_ROOT, 'storage', 'datasets', 'hf_dataset')
     WEIGHTS_DIR    = os.path.join(DRIVE_ROOT, 'storage', 'weights')
     CHECKPOINT_DIR = os.path.join(DRIVE_ROOT, 'storage', 'checkpoints')
     LOGS_DIR       = os.path.join(DRIVE_ROOT, 'storage', 'logs')
     EXPORTS_DIR    = os.path.join(DRIVE_ROOT, 'storage', 'exports')
+
+    # ⚡ Audio cache: copy từ Drive sang /content/audio_cache/ trước khi train
+    # Drive I/O ~5-10x chậm hơn local disk. Xem 00_setup_colab Cell "Audio Cache".
+    _AUDIO_LOCAL   = '/content/audio_cache'
 
 # ─── Local ────────────────────────────────────────────────────────────────────
 else:
@@ -58,6 +85,7 @@ else:
     else:
         PROJECT_ROOT = str(_nb)
     VIMD_PATH      = os.path.join(PROJECT_ROOT, 'ViMD', 'data')
+    VIMD_SLUG      = 'genai-vimd'
     PREV_CKPT_DIR  = os.path.join(PROJECT_ROOT, 'storage', 'checkpoints')
     CODE_DIR       = PROJECT_ROOT
     PROCESSED_PATH = os.path.join(PROJECT_ROOT, 'storage', 'processed')
@@ -66,13 +94,22 @@ else:
     CHECKPOINT_DIR = os.path.join(PROJECT_ROOT, 'storage', 'checkpoints')
     LOGS_DIR       = os.path.join(PROJECT_ROOT, 'storage', 'logs')
     EXPORTS_DIR    = os.path.join(PROJECT_ROOT, 'storage', 'exports')
+    _AUDIO_LOCAL   = None
 
 # ─── Derived paths ────────────────────────────────────────────────────────────
 FINAL_DATASET  = os.path.join(DATASET_EXPORT, 'vietspeech-vimd')
-AUDIO_DIR      = os.path.join(FINAL_DATASET, 'audio')
+FEATURES_DIR   = os.path.join(PROCESSED_PATH, 'features')
 ASR_CKPT_DIR   = os.path.join(CHECKPOINT_DIR, 'asr_wav2vec2')
 ASR_WEIGHT_DIR = os.path.join(WEIGHTS_DIR, 'asr_wav2vec2')
-FEATURES_DIR   = os.path.join(PROCESSED_PATH, 'features')
+
+# ⚡ AUDIO_DIR:
+#   - Colab: /content/audio_cache/ (local disk, ~10x nhanh hơn Drive)
+#             Chạy cell "Audio Cache" trong 00_setup_colab.ipynb trước khi train!
+#   - Kaggle/Local: {FINAL_DATASET}/audio/
+if IS_COLAB and _AUDIO_LOCAL:
+    AUDIO_DIR = _AUDIO_LOCAL
+else:
+    AUDIO_DIR = os.path.join(FINAL_DATASET, 'audio')
 
 # ─── Auto-create dirs ─────────────────────────────────────────────────────────
 _dirs = [PROCESSED_PATH, FEATURES_DIR, DATASET_EXPORT, WEIGHTS_DIR,
@@ -93,7 +130,8 @@ for _d in _dirs:
 try:
     import torch
     _vram = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
-    BATCH_SIZE  = 16 if _vram >= 15.5 else (8 if _vram >= 13 else 4)  # P100=16, T4=8
+    # T4 (Colab Free / Kaggle) = 15GB → batch 8; P100 = 16GB → batch 16; <8GB → batch 4
+    BATCH_SIZE  = 16 if _vram >= 15.5 else (8 if _vram >= 13 else 4)
     NUM_WORKERS = 0   # Kaggle/Colab: multiprocessing deadlock risk
 except Exception:
     BATCH_SIZE  = 4
@@ -101,7 +139,7 @@ except Exception:
 
 __all__ = [
     'IS_KAGGLE', 'IS_COLAB', 'IS_LOCAL', 'ENV_NAME',
-    'VIMD_PATH', 'PREV_CKPT_DIR', 'CODE_DIR',
+    'VIMD_PATH', 'VIMD_SLUG', 'PREV_CKPT_DIR', 'CODE_DIR',
     'PROJECT_ROOT', 'PROCESSED_PATH', 'DATASET_EXPORT',
     'WEIGHTS_DIR', 'CHECKPOINT_DIR', 'LOGS_DIR', 'EXPORTS_DIR',
     'FINAL_DATASET', 'AUDIO_DIR', 'FEATURES_DIR',
