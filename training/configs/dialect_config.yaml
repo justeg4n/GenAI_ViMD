@@ -19,21 +19,24 @@ model:
   arcface_scale: 64.0
 
 training:
-  # Colab T4 optimized
-  batch_size: auto               # auto-computed from available VRAM
+  # ✅ Colab Free T4 optimized (15GB VRAM)
+  batch_size: auto               # auto-computed từ VRAM
   gradient_accumulation_steps: 8
   max_epochs: 50
   early_stopping_patience: 7
   learning_rate: 1.0e-4
-  encoder_lr: 1.0e-5             # Lower LR for pre-trained encoder
+  encoder_lr: 1.0e-5             # Lower LR cho pre-trained encoder
   optimizer: adamw
   weight_decay: 0.01
   scheduler: cosine_with_restarts
   warmup_ratio: 0.1
   max_grad_norm: 1.0
-  mixed_precision: fp16          # Use bf16 on A100/H100
+  mixed_precision: fp16          # bf16 trên A100/H100
   ema: true
   ema_decay: 0.9999
+  # ✅ Updated: num_workers=0 cho Colab (multiprocessing gây deadlock)
+  num_workers: 0
+  pin_memory: false
 
 loss:
   province:
@@ -60,6 +63,9 @@ data:
   time_mask_param: 100
   num_freq_masks: 2
   num_time_masks: 2
+  # ✅ Updated: đúng đường dẫn audio trên Drive
+  audio_dir: /content/drive/MyDrive/GenAI_ViMD/storage/datasets/hf_dataset/vietspeech-vimd/audio
+  dataset_dir: /content/drive/MyDrive/GenAI_ViMD/storage/datasets/hf_dataset/vietspeech-vimd
 
 evaluation:
   metrics:
@@ -78,9 +84,12 @@ checkpointing:
   monitor_metric: province_accuracy
   monitor_mode: max
   gdrive_sync: true
-  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/dialect
+  # ✅ Updated: đúng tên folder trên Drive (GenAI_ViMD, không phải vietspeech_ai)
+  gdrive_path: /content/drive/MyDrive/GenAI_ViMD/storage/checkpoints/dialect
+  export_dir: /content/drive/MyDrive/GenAI_ViMD/storage/weights/dialect
 
 logging:
   mlflow_experiment: dialect_identification
+  mlflow_uri: /content/drive/MyDrive/GenAI_ViMD/storage/logs/mlflow
   log_every_n_steps: 50
   log_confusion_matrix: true

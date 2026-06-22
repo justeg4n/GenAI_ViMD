@@ -49,7 +49,7 @@ except ImportError:
     HAS_PARSELMOUTH = False
 
 try:
-    from speechbrain.pretrained import EncoderClassifier
+    from speechbrain.inference import EncoderClassifier
     HAS_SPEECHBRAIN = True
 except ImportError:
     HAS_SPEECHBRAIN = False
@@ -285,8 +285,17 @@ class FeatureExtractor:
         for i, sample in enumerate(samples):
             audio_field = sample[audio_key]
             if isinstance(audio_field, dict):
-                arr = np.array(audio_field["array"], dtype=np.float32)
-                sr = audio_field["sampling_rate"]
+                if "array" in audio_field and audio_field["array"] is not None:
+                    arr = np.array(audio_field["array"], dtype=np.float32)
+                    sr = audio_field.get("sampling_rate", self.sample_rate)
+                elif "bytes" in audio_field and audio_field["bytes"]:
+                    import io
+                    import soundfile as sf
+                    arr, sr = sf.read(io.BytesIO(audio_field["bytes"]), dtype="float32", always_2d=False)
+                    arr = arr.astype(np.float32)
+                else:
+                    logger.warning(f"Skipping sample {i}: unknown dict format")
+                    continue
             elif isinstance(audio_field, np.ndarray):
                 arr = audio_field
                 sr = sample.get(sr_key, self.sample_rate)

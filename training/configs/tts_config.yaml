@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # TTS Training Configuration
-# Primary: XTTS-v2
+# Primary: XTTS-v2 (Coqui TTS)
 # Alternative: CosyVoice2
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -24,9 +24,11 @@ fine_tuning:
   freeze_speaker_encoder: true
 
 training:
+  # ✅ Updated: batch_size=auto — notebook tự detect VRAM
+  # T4 (15GB) → batch=2 | <14GB → batch=1
   batch_size: auto
   gradient_accumulation_steps: 4
-  max_epochs: 100
+  max_epochs: 50
   early_stopping_patience: 10
   learning_rate: 5.0e-5
   optimizer: adamw
@@ -35,6 +37,8 @@ training:
   warmup_ratio: 0.1
   max_grad_norm: 0.5
   mixed_precision: fp16
+  # ✅ Updated: num_workers=0 cho Colab (multiprocessing gây deadlock)
+  num_loader_workers: 0
 
 voice_cloning:
   min_ref_duration_s: 5
@@ -64,13 +68,16 @@ evaluation:
   target_latency_ms: 300
 
 checkpointing:
-  save_every_n_steps: 1000
+  save_every_n_steps: 500     # Giảm từ 1000 → 500 để an toàn hơn trên Colab
   keep_top_k: 3
   monitor_metric: speaker_similarity
   monitor_mode: max
   gdrive_sync: true
-  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/tts
+  # ✅ Updated: đúng tên folder trên Drive (GenAI_ViMD, không phải vietspeech_ai)
+  gdrive_path: /content/drive/MyDrive/GenAI_ViMD/storage/checkpoints/tts
+  export_dir: /content/drive/MyDrive/GenAI_ViMD/storage/weights/xtts-v2
 
 logging:
   mlflow_experiment: tts_xtts
+  mlflow_uri: /content/drive/MyDrive/GenAI_ViMD/storage/logs/mlflow
   log_every_n_steps: 100

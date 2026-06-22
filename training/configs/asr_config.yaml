@@ -1,87 +1,92 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # ASR Training Configuration
-# Primary:  Whisper Large-v3 + LoRA/QLoRA
-# Secondary: PhoWhisper
-# Fallback:  Wav2Vec2
+# Primary: nguyenvulebinh/wav2vec2-base-vi-vlsp2020  (notebook 03)
+# Secondary: vinai/PhoWhisper-large
 # ─────────────────────────────────────────────────────────────────────────────
 
 model:
-  primary: openai/whisper-large-v3
+  primary: nguyenvulebinh/wav2vec2-base-vi-vlsp2020
   secondary: vinai/PhoWhisper-large
-  fallback: facebook/wav2vec2-large-960h-lv60-self
   language: vi
   task: transcribe
-  use_flash_attention: true
+  use_flash_attention: false        # Wav2Vec2-CTC không dùng flash attention
   gradient_checkpointing: true
 
 peft:
-  method: qlora               # qlora | lora | full
-  lora_r: 64
-  lora_alpha: 128
-  lora_dropout: 0.05
-  lora_target_modules:
-    - q_proj
-    - v_proj
-    - k_proj
-    - out_proj
-    - fc1
-    - fc2
-  bits: 4                     # 4-bit quantization for QLoRA
+  method: none                      # Wav2Vec2 fine-tune trực tiếp, không dùng LoRA
+
+freeze:
+  # ✅ Fix: freeze_feature_extractor() deprecated >= 4.37
+  # Notebook dùng: model.wav2vec2.feature_extractor.requires_grad_(False)
+  feature_extractor: true
+  transformer_layers: 0
 
 training:
-  batch_size: auto
-  gradient_accumulation_steps: 4
-  max_epochs: adaptive
+  batch_size: auto                  # auto từ VRAM: P100=16, T4=8, <14GB=4
+  gradient_accumulation_steps: 8    # effective batch = batch_size × 8
+  max_epochs: 3                     # test run — tăng lên 15 sau verify
   early_stopping_patience: 5
-  learning_rate: 1.0e-4
-  optimizer: adamw_bnb_8bit   # Use bitsandbytes AdamW
+  # ✅ fix.md Lỗi 2: LR=1e-5 (1e-4 quá cao cho wav2vec2-base full finetune)
+  learning_rate: 1.0e-5
+  optimizer: adamw
   weight_decay: 0.01
-  scheduler: cosine
-  warmup_ratio: 0.1
+  # ✅ fix.md Lỗi 3: linear scheduler với warmup (step sau optimizer.step())
+  scheduler: linear_with_warmup
+  warmup_steps: 100
   max_grad_norm: 1.0
-  mixed_precision: fp16
-  ema: false                  # EMA disabled for QLoRA
+  # ✅ fix.md Lỗi 1: USE_AMP=False vì fp16 + CTC = inf → nan
+  mixed_precision: none
+  ema: false
 
 data:
   sample_rate: 16000
-  max_duration_s: 30.0
+  max_duration_s: 10.0              # Kaggle/Colab Free: 10s để fit RAM
   min_duration_s: 0.5
+  # ✅ fix.md Lỗi 5: MAX_LABEL_LEN=256
+  max_label_len: 256
   augment_train: true
   augment_prob: 0.4
   spec_augment: true
-  num_workers: 4
+  # ✅ Kaggle/Colab: num_workers=0 (multiprocessing deadlock)
+  num_workers: 0
+  pin_memory: false
 
 generation:
   max_new_tokens: 444
-  num_beams: 5
-  temperature: 0.0
+  num_beams: 1                      # Greedy decode cho CTC
 
 evaluation:
   metrics:
     - wer
     - cer
-    - province_wer
-    - gender_wer
   target_wer: 0.08
   target_cer: 0.04
   normalize_text: true
   language: vi
 
 checkpointing:
-  save_every_n_steps: 200
+  save_every_epoch: true            # Lưu sau mỗi epoch (quan trọng cho Kaggle)
   keep_top_k: 3
   monitor_metric: wer
   monitor_mode: min
-  gdrive_sync: true
-  gdrive_path: /content/drive/MyDrive/vietspeech_ai/checkpoints/asr
+  # state file để resume nếu session bị reset:
+  state_file: train_state.json
+  # Kaggle: checkpoints trong /kaggle/working/storage/checkpoints/asr_wav2vec2/
+  kaggle_path: /kaggle/working/storage/checkpoints/asr_wav2vec2
+  # Colab: checkpoints trong Drive
+  gdrive_path: /content/drive/MyDrive/GenAI_ViMD/storage/checkpoints/asr_wav2vec2
 
 export:
   onnx: true
   torchscript: true
-  gguf: true
+  gguf: false
   quantize_onnx: true
   onnx_opset: 17
+  kaggle_export: /kaggle/working/storage/weights/asr_wav2vec2
+  gdrive_export: /content/drive/MyDrive/GenAI_ViMD/storage/weights/asr_wav2vec2
 
 logging:
-  mlflow_experiment: asr_whisper
+  mlflow_experiment: asr-wav2vec2-fixed
+  kaggle_mlflow_uri: /kaggle/working/storage/logs/mlflow
+  gdrive_mlflow_uri: /content/drive/MyDrive/GenAI_ViMD/storage/logs/mlflow
   log_every_n_steps: 50
